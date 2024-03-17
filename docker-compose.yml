@@ -3,9 +3,9 @@ version: '3'
 services:
   apt-cacher-ng:
     restart: always
-    image: sameersbn/apt-cacher-ng:3.7.4-20220421
+    image: ghcr.io/oct8l/apt-cacher-ng:latest
     init: true
     ports:
     - "3142:3142"
     volumes:
-    - /srv/docker/apt-cacher-ng:/var/cache/apt-cacher-ng
+    - ${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng

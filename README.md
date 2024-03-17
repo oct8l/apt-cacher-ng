@@ -1,6 +1,6 @@
-[![apt-cacher-ng](https://github.com/sameersbn/docker-apt-cacher-ng/actions/workflows/build.yml/badge.svg)](https://github.com/sameersbn/docker-apt-cacher-ng/actions/workflows/build.yml)
+[![apt-cacher-ng](https://github.com/oct8l/apt-cacher-ng/actions/workflows/build.yml/badge.svg)](https://github.com/oct8l/apt-cacher-ng/actions/workflows/build.yml)
 
-# sameersbn/apt-cacher-ng:3.7.4-20220421
+# oct8l/apt-cacher-ng
 
 - [Introduction](#introduction)
   - [Contributing](#contributing)
@@ -29,8 +29,6 @@ Apt-Cacher NG is a caching proxy, specialized for package files from Linux distr
 If you find this image useful here's how you can help:
 
 - Send a pull request with your awesome features and bug fixes
-- Help users resolve their [issues](../../issues?q=is%3Aopen+is%3Aissue).
-- Support the development of this image with a [donation](http://www.damagehead.com/donate/)
 
 ## Issues
 
@@ -48,18 +46,16 @@ If the above recommendations do not help then [report your issue](../../issues/n
 
 ## Installation
 
-Automated builds of the image are available on [Dockerhub](https://hub.docker.com/r/sameersbn/apt-cacher-ng) and is the recommended method of installation.
-
-> **Note**: Builds are also available on [Quay.io](https://quay.io/repository/sameersbn/apt-cacher-ng)
+Automated builds of the image are available in this [GitHub repo](https://github.com/users/oct8l/packages/container/package/apt-cacher-ng) and is the recommended method of installation.
 
 ```bash
-docker pull sameersbn/apt-cacher-ng:3.7.4-20220421
+docker pull ghcr.io/oct8l/apt-cacher-ng:latest
 ```
 
 Alternatively you can build the image yourself.
 
 ```bash
-docker build -t sameersbn/apt-cacher-ng github.com/sameersbn/docker-apt-cacher-ng
+docker build -t apt-cacher-ng github.com/oct8l/apt-cacher-ng
 ```
 
 ## Quickstart
@@ -69,8 +65,8 @@ Start Apt-Cacher NG using:
 ```bash
 docker run --name apt-cacher-ng --init -d --restart=always \
   --publish 3142:3142 \
-  --volume /srv/docker/apt-cacher-ng:/var/cache/apt-cacher-ng \
-  sameersbn/apt-cacher-ng:3.7.4-20220421
+  --volume ${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng \
+  ghcr.io/oct8l/apt-cacher-ng:latest
 ```
 
 *Alternatively, you can use the sample [docker-compose.yml](docker-compose.yml) file to start the container using [Docker Compose](https://docs.docker.com/compose/)*
@@ -82,8 +78,8 @@ You can customize the launch command of Apt-Cacher NG server by specifying argum
 ```bash
 docker run --name apt-cacher-ng --init -it --rm \
   --publish 3142:3142 \
-  --volume /srv/docker/apt-cacher-ng:/var/cache/apt-cacher-ng \
-  sameersbn/apt-cacher-ng:3.7.4-20220421 -h
+  --volume ${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng \
+  ghcr.io/oct8l/apt-cacher-ng:latest -h
 ```
 
 ## Persistence
@@ -95,8 +91,8 @@ For the cache to preserve its state across container shutdown and startup you sh
 SELinux users should update the security context of the host mountpoint so that it plays nicely with Docker:
 
 ```bash
-mkdir -p /srv/docker/apt-cacher-ng
-chcon -Rt svirt_sandbox_file_t /srv/docker/apt-cacher-ng
+mkdir -p ${PWD}/apt-cacher-ng
+chcon -Rt svirt_sandbox_file_t ${PWD}/apt-cacher-ng
 ```
 
 ## Docker Compose
@@ -109,7 +105,7 @@ version: '3'
 
 services:
   apt-cacher-ng:
-    image: sameersbn/apt-cacher-ng
+    image: ghcr.io/oct8l/apt-cacher-ng:latest
     container_name: apt-cacher-ng
     ports:
       - "3142:3142"
@@ -160,8 +156,8 @@ Using the [Command-line arguments](#command-line-arguments) feature, you can spe
 ```bash
 docker run --name apt-cacher-ng --init -it --rm \
   --publish 3142:3142 \
-  --volume /srv/docker/apt-cacher-ng:/var/cache/apt-cacher-ng \
-  sameersbn/apt-cacher-ng:3.7.4-20220421 -e
+  --volume ${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng \
+  ghcr.io/oct8l/apt-cacher-ng:latest -e
 ```
 
 The same can also be achieved on a running instance by visiting the url http://localhost:3142/acng-report.html in the web browser and selecting the **Start Scan and/or Expiration** option.
@@ -173,7 +169,7 @@ To upgrade to newer releases:
   1. Download the updated Docker image:
 
   ```bash
-  docker pull sameersbn/apt-cacher-ng:3.7.4-20220421
+  docker pull ghcr.io/oct8l/apt-cacher-ng:latest
   ```
 
   2. Stop the currently running image:
@@ -193,7 +189,7 @@ To upgrade to newer releases:
   ```bash
   docker run --name apt-cacher-ng --init -d \
     [OPTIONS] \
-    sameersbn/apt-cacher-ng:3.7.4-20220421
+    ghcr.io/oct8l/apt-cacher-ng:latest
   ```
 
 ## Shell Access
