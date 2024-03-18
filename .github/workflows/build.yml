@@ -12,6 +12,8 @@ on:
   workflow_dispatch:
     branches:
       - master
+  schedule:
+    - cron: '30 5 1,15 * *'
 
 jobs:
 
