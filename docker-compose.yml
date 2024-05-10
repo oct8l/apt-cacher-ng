@@ -8,4 +8,5 @@ services:
     ports:
     - "3142:3142"
     volumes:
-    - ${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng
+    - "${PWD}/apt-cacher-ng:/var/cache/apt-cacher-ng"
+    - "${PWD}/apt-cacher-ng/logs:/var/log/apt-cacher-ng"
