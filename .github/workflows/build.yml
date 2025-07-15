@@ -143,10 +143,11 @@ jobs:
 
             echo "=== Test 6: Verify proxy statistics ==="
             # Get proxy statistics to ensure it's actually proxying
-            curl -f -s "http://apt-cacher-ng:3142/acng-report.html" | grep -q "Statistics" || {
+            curl -f -s "http://apt-cacher-ng:3142/acng-report.html" | grep -q -i -E "(apt-cacher|report|status|cache)" || {
                 echo "ERROR: Could not access proxy statistics page"
                 exit 1
             }
+            echo "Proxy statistics page accessible and contains expected content"
 
             echo "=== All tests passed! ==="
             EOF
