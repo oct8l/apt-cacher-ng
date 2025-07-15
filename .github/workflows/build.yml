@@ -156,13 +156,13 @@ jobs:
         - name: Start services and run tests
           run: |
             echo "Starting apt-cacher-ng service..."
-            docker-compose -f docker-compose.test.yml up -d
+            docker compose -f docker-compose.test.yml up -d
 
             echo "Waiting for services to be healthy..."
-            timeout 60s docker-compose -f docker-compose.test.yml exec -T apt-cacher-ng sh -c 'while ! wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; do sleep 2; done'
+            timeout 60s docker compose -f docker-compose.test.yml exec -T apt-cacher-ng sh -c 'while ! wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; do sleep 2; done'
 
             echo "Running integration tests..."
-            docker-compose -f docker-compose.test.yml exec -T test-client /tests/run_tests.sh
+            docker compose -f docker-compose.test.yml exec -T test-client /tests/run_tests.sh
 
         - name: Test proxy performance and caching
           run: |
@@ -191,7 +191,7 @@ jobs:
             EOF
 
             chmod +x tests/performance_test.sh
-            docker-compose -f docker-compose.test.yml exec -T test-client /tests/performance_test.sh
+            docker compose -f docker-compose.test.yml exec -T test-client /tests/performance_test.sh
 
         - name: Test error handling
           run: |
@@ -217,20 +217,20 @@ jobs:
             EOF
 
             chmod +x tests/error_test.sh
-            docker-compose -f docker-compose.test.yml exec -T test-client /tests/error_test.sh
+            docker compose -f docker-compose.test.yml exec -T test-client /tests/error_test.sh
 
         - name: Verify logs and collect diagnostics
           run: |
             echo "=== Collecting apt-cacher-ng logs ==="
-            docker-compose -f docker-compose.test.yml logs apt-cacher-ng
+            docker compose -f docker-compose.test.yml logs apt-cacher-ng
 
             echo "=== Checking proxy statistics ==="
-            docker-compose -f docker-compose.test.yml exec -T test-client wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | head -50
+            docker compose -f docker-compose.test.yml exec -T test-client wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | head -50
 
         - name: Cleanup test environment
           if: always()
           run: |
-            docker-compose -f docker-compose.test.yml down -v
+            docker compose -f docker-compose.test.yml down -v
             rm -f docker-compose.test.yml
             rm -rf tests
 

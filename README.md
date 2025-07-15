@@ -120,7 +120,7 @@ volumes:
 The Apt-Cache NG service can then be started in the background with:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Usage

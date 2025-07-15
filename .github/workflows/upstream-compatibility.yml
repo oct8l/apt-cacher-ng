@@ -135,8 +135,8 @@ jobs:
                 "
           EOF
 
-          docker-compose -f docker-compose.upstream-test.yml up --abort-on-container-exit
-          docker-compose -f docker-compose.upstream-test.yml down
+          docker compose -f docker-compose.upstream-test.yml up --abort-on-container-exit
+          docker compose -f docker-compose.upstream-test.yml down
 
   test-different-debian-clients:
     name: Test compatibility with different Debian client versions
