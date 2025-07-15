@@ -81,7 +81,6 @@ jobs:
         - name: Create test docker-compose.yml
           run: |
             cat > docker-compose.test.yml << EOF
-            version: '3'
             services:
               apt-cacher-ng:
                 image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}

@@ -140,7 +140,6 @@ jobs:
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
           VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
           cat > docker-compose.upstream-test.yml << EOF
-          version: '3'
           services:
             apt-cacher-ng:
               image: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
