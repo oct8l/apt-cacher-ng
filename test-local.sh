@@ -65,7 +65,7 @@ fi
 echo ""
 echo "🧪 Test 4: Statistics check"
 echo "📊 Current cache statistics:"
-curl -s http://localhost:3142/acng-report.html | grep -A 10 -B 5 "Statistics" || echo "No statistics found yet"
+curl -f -s http://localhost:3142/acng-report.html | grep -A 10 -B 5 "Statistics" || echo "No statistics found yet"
 
 echo ""
 echo "🧹 Cleaning up..."

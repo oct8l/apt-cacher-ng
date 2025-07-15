@@ -126,7 +126,7 @@ jobs:
 
             echo "=== Test 3: Verify proxy is working by checking logs ==="
             # Check that the proxy service is responding
-            wget -q -O /dev/null "http://apt-cacher-ng:3142/acng-report.html"
+            curl -f -s -o /dev/null "http://apt-cacher-ng:3142/acng-report.html"
             echo "Proxy health check passed"
 
             echo "=== Test 4: Test cache hit by reinstalling same package ==="
@@ -143,7 +143,7 @@ jobs:
 
             echo "=== Test 6: Verify proxy statistics ==="
             # Get proxy statistics to ensure it's actually proxying
-            wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | grep -q "Statistics" || {
+            curl -f -s "http://apt-cacher-ng:3142/acng-report.html" | grep -q "Statistics" || {
                 echo "ERROR: Could not access proxy statistics page"
                 exit 1
             }
@@ -225,7 +225,7 @@ jobs:
             docker compose -f docker-compose.test.yml logs apt-cacher-ng
 
             echo "=== Checking proxy statistics ==="
-            docker compose -f docker-compose.test.yml exec -T test-client wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | head -50
+            docker compose -f docker-compose.test.yml exec -T test-client curl -f -s "http://apt-cacher-ng:3142/acng-report.html" | head -50
 
         - name: Cleanup test environment
           if: always()
