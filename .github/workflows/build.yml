@@ -256,6 +256,251 @@ jobs:
           rm -f docker-compose.test.yml
           rm -rf tests
 
+  test-cron-comprehensive:
+    name: Comprehensive Tests for Scheduled Builds
+    if: github.event_name == 'schedule'
+    needs: [test-integration]
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: read
+
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr.io registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create comprehensive test environment
+        run: |
+          cat > docker-compose.cron-test.yml << EOF
+          services:
+            apt-cacher-ng:
+              image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+              init: true
+              ports:
+                - "3142:3142"
+              volumes:
+                - apt-cacher-data:/var/cache/apt-cacher-ng
+                - apt-cacher-logs:/var/log/apt-cacher-ng
+              healthcheck:
+                test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 30s
+
+            # Test multiple distributions
+            debian-bookworm:
+              image: debian:bookworm-slim
+              depends_on:
+                apt-cacher-ng:
+                  condition: service_healthy
+              volumes:
+                - ./tests:/tests
+              command: sleep infinity
+
+            debian-bullseye:
+              image: debian:bullseye-slim
+              depends_on:
+                apt-cacher-ng:
+                  condition: service_healthy
+              volumes:
+                - ./tests:/tests
+              command: sleep infinity
+
+            ubuntu-jammy:
+              image: ubuntu:22.04
+              depends_on:
+                apt-cacher-ng:
+                  condition: service_healthy
+              volumes:
+                - ./tests:/tests
+              command: sleep infinity
+
+          volumes:
+            apt-cacher-data:
+            apt-cacher-logs:
+          EOF
+
+      - name: Create comprehensive test scripts
+        run: |
+          mkdir -p tests
+
+          # Multi-distribution test
+          cat > tests/multi_distro_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          set -x
+
+          echo "=== Multi-Distribution Test ==="
+
+          # Configure apt to use the proxy
+          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+          echo "Testing on: $(cat /etc/os-release | grep PRETTY_NAME)"
+
+          # Update package lists
+          apt-get update
+
+          # Install common packages
+          apt-get install -y curl wget htop nano
+
+          # Verify installations
+          curl --version
+          wget --version
+          htop --version
+          nano --version
+
+          echo "Multi-distribution test passed for $(cat /etc/os-release | grep PRETTY_NAME)"
+          EOF
+
+          # Load and stress test
+          cat > tests/load_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          set -x
+
+          echo "=== Load and Stress Test ==="
+
+          # Configure apt to use the proxy
+          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+          # Stress test with multiple package installations
+          packages=(
+            "build-essential"
+            "git"
+            "python3"
+            "nodejs"
+            "nginx"
+            "postgresql-client"
+            "redis-tools"
+            "jq"
+            "tree"
+            "vim"
+          )
+
+          for package in "${packages[@]}"; do
+            echo "Installing $package..."
+            apt-get install -y "$package"
+            echo "Successfully installed $package"
+          done
+
+          echo "Load test completed successfully"
+          EOF
+
+          # Long-running reliability test
+          cat > tests/reliability_test.sh << 'EOF'
+          #!/bin/bash
+          set -e
+          set -x
+
+          echo "=== Reliability Test ==="
+
+          # Configure apt to use the proxy
+          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+          # Test cache persistence and performance over time
+          for i in {1..5}; do
+            echo "Reliability test iteration $i/5"
+
+            # Install packages
+            apt-get install -y "package-$i" 2>/dev/null || apt-get install -y curl
+
+            # Check proxy health
+            if ! curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > /dev/null; then
+              echo "ERROR: Proxy health check failed in iteration $i"
+              exit 1
+            fi
+
+            # Wait between iterations
+            sleep 10
+          done
+
+          echo "Reliability test passed"
+          EOF
+
+          chmod +x tests/*.sh
+
+      - name: Start comprehensive test environment
+        run: |
+          echo "Starting comprehensive test environment..."
+          docker compose -f docker-compose.cron-test.yml up -d
+
+          echo "Waiting for services to be healthy..."
+          timeout 120s docker compose -f docker-compose.cron-test.yml exec -T apt-cacher-ng sh -c 'while ! wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; do sleep 2; done'
+
+      - name: Run multi-distribution tests
+        run: |
+          echo "Testing Debian Bookworm..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/multi_distro_test.sh
+
+          echo "Testing Debian Bullseye..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bullseye /tests/multi_distro_test.sh
+
+          echo "Testing Ubuntu Jammy..."
+          docker compose -f docker-compose.cron-test.yml exec -T ubuntu-jammy /tests/multi_distro_test.sh
+
+      - name: Run load and stress tests
+        run: |
+          echo "Running load test on Debian Bookworm..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/load_test.sh
+
+      - name: Run reliability tests
+        run: |
+          echo "Running reliability test..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/reliability_test.sh
+
+      - name: Validate proxy statistics and health
+        run: |
+          echo "=== Final Proxy Validation ==="
+
+          # Get detailed statistics
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > proxy-stats.html
+
+          # Check for expected content in statistics
+          if ! grep -q -i "apt-cacher" proxy-stats.html; then
+            echo "ERROR: Proxy statistics don't contain expected content"
+            exit 1
+          fi
+
+          # Check cache utilization
+          if ! grep -q -i -E "(cache|hit|miss)" proxy-stats.html; then
+            echo "WARNING: No cache statistics found - this might indicate an issue"
+          fi
+
+          echo "Proxy validation completed successfully"
+
+      - name: Collect comprehensive logs
+        if: always()
+        run: |
+          echo "=== Collecting comprehensive logs ==="
+          docker compose -f docker-compose.cron-test.yml logs apt-cacher-ng > apt-cacher-ng-cron-logs.txt
+
+          # Show log summary
+          echo "Log file size: $(wc -l apt-cacher-ng-cron-logs.txt | cut -d' ' -f1) lines"
+          echo "Recent logs:"
+          tail -50 apt-cacher-ng-cron-logs.txt
+
+      - name: Cleanup comprehensive test environment
+        if: always()
+        run: |
+          docker compose -f docker-compose.cron-test.yml down -v
+          rm -f docker-compose.cron-test.yml
+          rm -rf tests
+          rm -f proxy-stats.html apt-cacher-ng-cron-logs.txt
+
   scan-image:
       name: Scan Image with Trivy
       needs: [build-test-image]
@@ -302,6 +547,8 @@ jobs:
     name: Build and Push Docker Image
     needs: [test-integration, scan-image]
     runs-on: ubuntu-latest
+    # Skip this job for scheduled builds (use the comprehensive one instead)
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout code
@@ -344,3 +591,88 @@ jobs:
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+
+  build-and-push-docker-image-scheduled:
+    name: Build and Push Docker Image (Scheduled)
+    needs: [test-integration, scan-image, test-cron-comprehensive]
+    runs-on: ubuntu-latest
+    # Only run this job for scheduled builds (after comprehensive testing)
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/oct8l/apt-cacher-ng
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            latest
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Github Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image and push to container registries
+        id: docker_build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
+
+      - name: Image digest
+        run: echo ${{ steps.docker_build.outputs.digest }}
+
+      - name: Notify scheduled build success
+        run: |
+          echo "✅ Scheduled build completed successfully!"
+          echo "Image pushed: ghcr.io/oct8l/apt-cacher-ng:latest"
+          echo "Comprehensive tests passed on multiple distributions"
+          echo "Image digest: ${{ steps.docker_build.outputs.digest }}"
+
+  notify-cron-failure:
+    name: Notify Scheduled Build Failure
+    needs: [test-integration, scan-image, test-cron-comprehensive, build-and-push-docker-image-scheduled]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'schedule' && (needs.test-integration.result == 'failure' || needs.scan-image.result == 'failure' || needs.test-cron-comprehensive.result == 'failure' || needs.build-and-push-docker-image-scheduled.result == 'failure')
+
+    steps:
+      - name: Notify scheduled build failure
+        run: |
+          echo "❌ Scheduled apt-cacher-ng build failed!"
+          echo "Repository: ${{ github.repository }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          echo "Job statuses:"
+          echo "- Integration tests: ${{ needs.test-integration.result }}"
+          echo "- Security scan: ${{ needs.scan-image.result }}"
+          echo "- Comprehensive tests: ${{ needs.test-cron-comprehensive.result }}"
+          echo "- Image build/push: ${{ needs.build-and-push-docker-image-scheduled.result }}"
+
+          echo ""
+          echo "⚠️ No new image was pushed due to test failures."
+          echo "Please check the failed jobs for details."
+
+          # You can extend this to send notifications to Slack, email, etc.
+          # For example:
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"apt-cacher-ng scheduled build failed!"}' \
+          #   $SLACK_WEBHOOK_URL
