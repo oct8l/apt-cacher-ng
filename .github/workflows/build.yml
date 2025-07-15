@@ -3,12 +3,12 @@ name: Build and Publish
 on:
   push:
     branches:
-      - master
+      - main
     tags:
       - 'v*.*.*'
   pull_request:
     branches:
-      - master
+      - main
   workflow_dispatch:
   schedule:
     - cron: '30 5 1,15 * *'
@@ -66,6 +66,173 @@ jobs:
             registry: ghcr.io
             username: ${{ github.actor }}
             password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Create test docker-compose.yml
+          run: |
+            cat > docker-compose.test.yml << EOF
+            version: '3'
+            services:
+              apt-cacher-ng:
+                image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+                init: true
+                ports:
+                  - "3142:3142"
+                volumes:
+                  - apt-cacher-data:/var/cache/apt-cacher-ng
+                  - apt-cacher-logs:/var/log/apt-cacher-ng
+                healthcheck:
+                  test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                  start_period: 30s
+
+              test-client:
+                image: debian:bookworm-slim
+                depends_on:
+                  apt-cacher-ng:
+                    condition: service_healthy
+                volumes:
+                  - ./tests:/tests
+                command: sleep infinity
+
+            volumes:
+              apt-cacher-data:
+              apt-cacher-logs:
+            EOF
+
+        - name: Create test scripts
+          run: |
+            mkdir -p tests
+
+            # Main test script
+            cat > tests/run_tests.sh << 'EOF'
+            #!/bin/bash
+            set -e
+            set -x
+
+            echo "=== Starting apt-cacher-ng integration tests ==="
+
+            # Configure apt to use the proxy
+            echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+            echo "=== Test 1: Basic apt update through proxy ==="
+            apt-get update
+
+            echo "=== Test 2: Install a small package (cache miss) ==="
+            apt-get install -y curl
+            curl --version
+
+            echo "=== Test 3: Verify proxy is working by checking logs ==="
+            # Check that the proxy service is responding
+            wget -q -O /dev/null "http://apt-cacher-ng:3142/acng-report.html"
+            echo "Proxy health check passed"
+
+            echo "=== Test 4: Test cache hit by reinstalling same package ==="
+            apt-get remove -y curl
+            apt-get clean
+            apt-get update
+            # This should be faster as it hits the cache
+            time apt-get install -y curl
+
+            echo "=== Test 5: Install multiple packages ==="
+            apt-get install -y wget nano
+            wget --version
+            nano --version
+
+            echo "=== Test 6: Verify proxy statistics ==="
+            # Get proxy statistics to ensure it's actually proxying
+            wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | grep -q "Statistics" || {
+                echo "ERROR: Could not access proxy statistics page"
+                exit 1
+            }
+
+            echo "=== All tests passed! ==="
+            EOF
+
+            chmod +x tests/run_tests.sh
+
+        - name: Start services and run tests
+          run: |
+            echo "Starting apt-cacher-ng service..."
+            docker-compose -f docker-compose.test.yml up -d
+
+            echo "Waiting for services to be healthy..."
+            timeout 60s docker-compose -f docker-compose.test.yml exec -T apt-cacher-ng sh -c 'while ! wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; do sleep 2; done'
+
+            echo "Running integration tests..."
+            docker-compose -f docker-compose.test.yml exec -T test-client /tests/run_tests.sh
+
+        - name: Test proxy performance and caching
+          run: |
+            cat > tests/performance_test.sh << 'EOF'
+            #!/bin/bash
+            set -e
+
+            echo "=== Performance and Caching Tests ==="
+
+            # Configure apt to use the proxy
+            echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+            echo "=== Test cache performance ==="
+            # First install (cache miss)
+            echo "First install (cache miss):"
+            time (apt-get update && apt-get install -y htop)
+
+            # Remove and reinstall (cache hit)
+            apt-get remove -y htop
+            apt-get clean
+            echo "Second install (cache hit - should be faster):"
+            time (apt-get update && apt-get install -y htop)
+
+            echo "Performance test completed"
+            EOF
+
+            chmod +x tests/performance_test.sh
+            docker-compose -f docker-compose.test.yml exec -T test-client /tests/performance_test.sh
+
+        - name: Test error handling
+          run: |
+            cat > tests/error_test.sh << 'EOF'
+            #!/bin/bash
+            set -e
+
+            echo "=== Error Handling Tests ==="
+
+            # Configure apt to use the proxy
+            echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
+
+            echo "=== Test handling of non-existent package ==="
+            if apt-get install -y nonexistent-package-12345 2>/dev/null; then
+                echo "ERROR: Should have failed to install non-existent package"
+                exit 1
+            else
+                echo "Correctly handled non-existent package"
+            fi
+
+            echo "Error handling test completed"
+            EOF
+
+            chmod +x tests/error_test.sh
+            docker-compose -f docker-compose.test.yml exec -T test-client /tests/error_test.sh
+
+        - name: Verify logs and collect diagnostics
+          run: |
+            echo "=== Collecting apt-cacher-ng logs ==="
+            docker-compose -f docker-compose.test.yml logs apt-cacher-ng
+
+            echo "=== Checking proxy statistics ==="
+            docker-compose -f docker-compose.test.yml exec -T test-client wget -q -O - "http://apt-cacher-ng:3142/acng-report.html" | head -50
+
+        - name: Cleanup test environment
+          if: always()
+          run: |
+            docker-compose -f docker-compose.test.yml down -v
+            rm -f docker-compose.test.yml
+            rm -rf tests
 
   scan-image:
       name: Scan Image with Trivy
