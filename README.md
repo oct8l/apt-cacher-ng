@@ -147,6 +147,48 @@ To access the Apt-Cacher NG logs, located at `/var/log/apt-cacher-ng`, you can u
 docker exec -it apt-cacher-ng tail -f /var/log/apt-cacher-ng/apt-cacher.log
 ```
 
+# Testing
+
+## Local Testing
+
+Before submitting a PR, you can run local tests to verify your changes work correctly:
+
+```bash
+./test-local.sh
+```
+
+This script will:
+- Build the Docker image from your local changes
+- Start the apt-cacher-ng service
+- Run functional tests to verify package caching works
+- Test performance (cache miss vs cache hit)
+- Verify health checks and statistics
+
+## CI/CD Testing
+
+The project includes comprehensive GitHub Actions workflows that run automatically on PRs:
+
+### Integration Tests (`build.yml`)
+- Builds the image from PR changes
+- Tests actual package downloads through the proxy
+- Verifies caching functionality works correctly
+- Tests error handling scenarios
+- Collects performance metrics and logs
+
+### Upstream Compatibility Tests (`upstream-compatibility.yml`)
+- Tests against different Debian base images (`bookworm`, `bullseye`)
+- Tests with different apt-cacher-ng versions
+- Verifies compatibility with various client distributions (Debian, Ubuntu)
+- Tests different package sources and repositories
+- Runs performance regression testing
+- Scheduled weekly to catch upstream changes
+
+These automated tests ensure that:
+- Upstream image changes don't silently break builds
+- New changes maintain backward compatibility
+- Performance doesn't regress
+- The proxy works correctly across different client configurations
+
 # Maintenance
 
 ## Cache expiry
