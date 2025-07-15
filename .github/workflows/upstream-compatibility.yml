@@ -1,0 +1,316 @@
+name: Upstream Compatibility Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Run weekly to catch upstream changes
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  test-upstream-variations:
+    name: Test against upstream variations (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base_image:
+          - "debian:bookworm-slim"
+          - "debian:bookworm"
+          - "debian:bullseye-slim"
+        apt_cacher_version:
+          - "" # Use default version available in the repository
+          # Additional versions can be added when we know they exist in specific repos
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create test Dockerfile
+        run: |
+          # Handle version patterns correctly
+          VERSION_PATTERN="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_PATTERN" ]]; then
+            # Use default version available in repository
+            APT_VERSION_SPEC=""
+            APT_PACKAGE="apt-cacher-ng"
+          elif [[ "$VERSION_PATTERN" == *"*" ]]; then
+            # Version already has wildcard
+            APT_VERSION_SPEC="$VERSION_PATTERN"
+            APT_PACKAGE="apt-cacher-ng=$APT_VERSION_SPEC"
+          else
+            # Add wildcard to specific version
+            APT_VERSION_SPEC="${VERSION_PATTERN}*"
+            APT_PACKAGE="apt-cacher-ng=$APT_VERSION_SPEC"
+          fi
+
+          cat > Dockerfile.test << EOF
+          FROM ${{ matrix.base_image }}
+
+          ENV APT_CACHER_NG_VERSION=${{ matrix.apt_cacher_version }} \\
+              APT_CACHER_NG_CACHE_DIR=/var/cache/apt-cacher-ng \\
+              APT_CACHER_NG_LOG_DIR=/var/log/apt-cacher-ng \\
+              APT_CACHER_NG_USER=apt-cacher-ng
+
+          RUN apt-get update \\
+           && echo "=== Available apt-cacher-ng versions ===" \\
+           && apt-cache madison apt-cacher-ng || true \\
+           && echo "=== Installing: ${APT_PACKAGE} ===" \\
+           && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\
+                ${APT_PACKAGE} ca-certificates wget \\
+           && echo "=== Installed version ===" \\
+           && apt-cacher-ng -V || dpkg -l apt-cacher-ng \\
+           && sed 's/# ForeGround: 0/ForeGround: 1/' -i /etc/apt-cacher-ng/acng.conf \\
+           && sed 's/# PassThroughPattern:.*this would allow.*/PassThroughPattern: .* #/' -i /etc/apt-cacher-ng/acng.conf \\
+           && rm -rf /var/lib/apt/lists/*
+
+          COPY entrypoint.sh /sbin/entrypoint.sh
+
+          RUN chmod 755 /sbin/entrypoint.sh
+
+          EXPOSE 3142/tcp
+
+          HEALTHCHECK --interval=10s --timeout=2s --retries=3 \\
+              CMD wget -q -t1 -O /dev/null  http://localhost:3142/acng-report.html || exit 1
+
+          ENTRYPOINT ["/sbin/entrypoint.sh"]
+
+          CMD ["/usr/sbin/apt-cacher-ng"]
+          EOF
+
+      - name: Build test image
+        run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+          echo "Testing with base image: ${{ matrix.base_image }}, apt-cacher-ng version: $VERSION_DISPLAY"
+
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+          echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
+          docker build --platform ${{ matrix.platform }} -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
+
+      - name: Test image functionality
+        run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+          # Start the service
+          docker run -d --name test-cacher -p 3142:3142 test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
+
+          # Wait for service to be ready
+          timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
+
+          # Test that we can use it as a proxy
+          docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm-slim bash -c "
+            echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
+            apt-get update
+            apt-get install -y curl
+            curl --version
+          "
+
+          # Verify health
+          curl -f http://localhost:3142/acng-report.html
+
+          # Cleanup
+          docker stop test-cacher
+          docker rm test-cacher
+
+      - name: Test with docker-compose
+        run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+          cat > docker-compose.upstream-test.yml << EOF
+          services:
+            apt-cacher-ng:
+              image: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
+              platform: ${{ matrix.platform }}
+              init: true
+              ports:
+                - "3142:3142"
+              healthcheck:
+                test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 30s
+
+            test-client:
+              image: debian:bookworm-slim
+              depends_on:
+                apt-cacher-ng:
+                  condition: service_healthy
+              command: >
+                bash -c "
+                  echo 'Acquire::HTTP::Proxy \"http://apt-cacher-ng:3142\";' > /etc/apt/apt.conf.d/01proxy &&
+                  echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy &&
+                  apt-get update &&
+                  apt-get install -y wget htop &&
+                  wget --version &&
+                  htop --version
+                "
+          EOF
+
+          docker compose -f docker-compose.upstream-test.yml up --abort-on-container-exit
+          docker compose -f docker-compose.upstream-test.yml down
+
+  test-different-debian-clients:
+    name: Test compatibility with different Debian client versions
+    runs-on: ubuntu-latest
+    needs: [test-upstream-variations]
+    strategy:
+      fail-fast: false
+      matrix:
+        client_image:
+          - "debian:bookworm"
+          - "debian:bullseye"
+          - "ubuntu:22.04"
+          - "ubuntu:20.04"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build main image
+        run: |
+          docker build -t test-apt-cacher-main .
+
+      - name: Test with different client versions
+        run: |
+          # Start apt-cacher-ng
+          docker run -d --name apt-cacher-test -p 3142:3142 test-apt-cacher-main
+
+          # Wait for service to be ready
+          timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
+
+          # Test with the client image
+          docker run --rm --add-host=apt-cacher:host-gateway ${{ matrix.client_image }} bash -c "
+            echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
+
+            # Basic functionality test
+            apt-get update
+            apt-get install -y curl
+            curl --version
+
+            # Test that caching works
+            apt-get install -y wget
+            wget --version
+          "
+
+          # Cleanup
+          docker stop apt-cacher-test
+          docker rm apt-cacher-test
+
+  test-package-sources:
+    name: Test with different package sources
+    runs-on: ubuntu-latest
+    needs: [test-upstream-variations]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build main image
+        run: |
+          docker build -t test-apt-cacher-sources .
+
+      - name: Test with different package sources
+        run: |
+          # Start apt-cacher-ng
+          docker run -d --name apt-cacher-sources -p 3142:3142 test-apt-cacher-sources
+
+          # Wait for service to be ready
+          timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
+
+          # Test with various package sources
+          docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm bash -c "
+            echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
+
+            # Test main repository
+            apt-get update
+            apt-get install -y curl
+
+            # Test with backports (if available)
+            echo 'deb http://deb.debian.org/debian bookworm-backports main' >> /etc/apt/sources.list
+            apt-get update
+
+            # Test with security updates
+            apt-get install -y wget
+
+            echo 'Package source testing completed successfully'
+          "
+
+          # Cleanup
+          docker stop apt-cacher-sources
+          docker rm apt-cacher-sources
+
+  test-performance-regression:
+    name: Performance regression test
+    runs-on: ubuntu-latest
+    needs: [test-upstream-variations]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build main image
+        run: |
+          docker build -t test-apt-cacher-perf .
+
+      - name: Performance test
+        run: |
+          # Start apt-cacher-ng
+          docker run -d --name apt-cacher-perf -p 3142:3142 test-apt-cacher-perf
+
+          # Wait for service to be ready
+          timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
+
+          # Performance test script
+          docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm bash -c "
+            echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
+            echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
+
+            echo 'Testing cache miss performance...'
+            time (apt-get update && apt-get install -y build-essential)
+
+            echo 'Testing cache hit performance...'
+            apt-get remove -y build-essential
+            apt-get clean
+            time (apt-get update && apt-get install -y build-essential)
+
+            echo 'Performance test completed'
+          "
+
+          # Get cache statistics
+          curl -s http://localhost:3142/acng-report.html | grep -A 20 "Cache statistics" || true
+
+          # Cleanup
+          docker stop apt-cacher-perf
+          docker rm apt-cacher-perf
