@@ -21,8 +21,8 @@ jobs:
           - "debian:bookworm"
           - "debian:bullseye-slim"
         apt_cacher_version:
-          - "3.7.4"
-          - "3.7" # Latest 3.7.x series
+          - "" # Use default version available in the repository
+          - "3.7.4" # Try specific version if available
           # Add more versions as needed
 
     steps:
@@ -34,12 +34,20 @@ jobs:
 
       - name: Create test Dockerfile
         run: |
-          # Handle version patterns correctly - don't add extra * if version already has wildcard
+          # Handle version patterns correctly
           VERSION_PATTERN="${{ matrix.apt_cacher_version }}"
-          if [[ "$VERSION_PATTERN" == *"*" ]]; then
+          if [[ -z "$VERSION_PATTERN" ]]; then
+            # Use default version available in repository
+            APT_VERSION_SPEC=""
+            APT_PACKAGE="apt-cacher-ng"
+          elif [[ "$VERSION_PATTERN" == *"*" ]]; then
+            # Version already has wildcard
             APT_VERSION_SPEC="$VERSION_PATTERN"
+            APT_PACKAGE="apt-cacher-ng=$APT_VERSION_SPEC"
           else
+            # Add wildcard to specific version
             APT_VERSION_SPEC="${VERSION_PATTERN}*"
+            APT_PACKAGE="apt-cacher-ng=$APT_VERSION_SPEC"
           fi
 
           cat > Dockerfile.test << EOF
@@ -52,7 +60,7 @@ jobs:
 
           RUN apt-get update \\
            && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\
-                apt-cacher-ng=${APT_VERSION_SPEC} ca-certificates wget \\
+                ${APT_PACKAGE} ca-certificates wget \\
            && sed 's/# ForeGround: 0/ForeGround: 1/' -i /etc/apt-cacher-ng/acng.conf \\
            && sed 's/# PassThroughPattern:.*this would allow.*/PassThroughPattern: .* #/' -i /etc/apt-cacher-ng/acng.conf \\
            && rm -rf /var/lib/apt/lists/*
@@ -73,18 +81,28 @@ jobs:
 
       - name: Build test image
         run: |
-          echo "Testing with base image: ${{ matrix.base_image }}, apt-cacher-ng version: ${{ matrix.apt_cacher_version }}"
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+          echo "Testing with base image: ${{ matrix.base_image }}, apt-cacher-ng version: $VERSION_DISPLAY"
+
           # Sanitize matrix values for Docker tag (replace : and / with -)
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
-          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
           echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
           docker build -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
 
       - name: Test image functionality
         run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
           # Sanitize matrix values for Docker tag (replace : and / with -)
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
-          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
           # Start the service
           docker run -d --name test-cacher -p 3142:3142 test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
 
@@ -109,9 +127,14 @@ jobs:
 
       - name: Test with docker-compose
         run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
           # Sanitize matrix values for Docker tag (replace : and / with -)
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
-          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
           cat > docker-compose.upstream-test.yml << EOF
           version: '3'
           services:
