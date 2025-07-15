@@ -45,7 +45,7 @@ jobs:
           tags: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
 
     test-integration:
       name: Integration tests (${{ matrix.platform }})

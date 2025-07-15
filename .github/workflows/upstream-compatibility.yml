@@ -11,7 +11,7 @@ on:
 
 jobs:
   test-upstream-variations:
-    name: Test against upstream variations
+    name: Test against upstream variations (${{ matrix.platform }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -23,10 +23,16 @@ jobs:
         apt_cacher_version:
           - "" # Use default version available in the repository
           # Additional versions can be added when we know they exist in specific repos
+        platform:
+          - linux/amd64
+          - linux/arm64
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -95,7 +101,7 @@ jobs:
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
           VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
           echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
-          docker build -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
+          docker build --platform ${{ matrix.platform }} -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
 
       - name: Test image functionality
         run: |
@@ -143,6 +149,7 @@ jobs:
           services:
             apt-cacher-ng:
               image: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
+              platform: ${{ matrix.platform }}
               init: true
               ports:
                 - "3142:3142"
