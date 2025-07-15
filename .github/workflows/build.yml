@@ -47,16 +47,16 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-  test-integration:
+    test-integration:
       name: Integration tests (${{ matrix.platform }})
       needs: [build-test-image]
       runs-on: ubuntu-latest
       strategy:
         matrix:
-          platform:
+          platform: 
             - linux/amd64
             - linux/arm64
-
+      
       permissions:
         packages: read
 
@@ -67,7 +67,7 @@ jobs:
 
         - name: Set up QEMU
           uses: docker/setup-qemu-action@v3
-
+          
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v3
 
@@ -78,24 +78,13 @@ jobs:
             username: ${{ github.actor }}
             password: ${{ secrets.GITHUB_TOKEN }}
 
-        - name: Build multi-arch test image
-          uses: docker/build-push-action@v6
-          with:
-            context: .
-            push: true
-            tags: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-            cache-from: type=gha
-            cache-to: type=gha,mode=max
-            platforms: ${{ matrix.platform }}
-
         - name: Create test docker-compose.yml
           run: |
-            PLATFORM_TAG="${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}"
             cat > docker-compose.test.yml << EOF
             version: '3'
             services:
               apt-cacher-ng:
-                image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}-\${PLATFORM_TAG}
+                image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
                 platform: ${{ matrix.platform }}
                 init: true
                 ports:
