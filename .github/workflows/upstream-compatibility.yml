@@ -22,8 +22,7 @@ jobs:
           - "debian:bullseye-slim"
         apt_cacher_version:
           - "" # Use default version available in the repository
-          - "3.7.4" # Try specific version if available
-          # Add more versions as needed
+          # Additional versions can be added when we know they exist in specific repos
 
     steps:
       - name: Checkout code
@@ -59,8 +58,13 @@ jobs:
               APT_CACHER_NG_USER=apt-cacher-ng
 
           RUN apt-get update \\
+           && echo "=== Available apt-cacher-ng versions ===" \\
+           && apt-cache madison apt-cacher-ng || true \\
+           && echo "=== Installing: ${APT_PACKAGE} ===" \\
            && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\
                 ${APT_PACKAGE} ca-certificates wget \\
+           && echo "=== Installed version ===" \\
+           && apt-cacher-ng -V || dpkg -l apt-cacher-ng \\
            && sed 's/# ForeGround: 0/ForeGround: 1/' -i /etc/apt-cacher-ng/acng.conf \\
            && sed 's/# PassThroughPattern:.*this would allow.*/PassThroughPattern: .* #/' -i /etc/apt-cacher-ng/acng.conf \\
            && rm -rf /var/lib/apt/lists/*
