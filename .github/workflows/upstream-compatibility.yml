@@ -65,12 +65,20 @@ jobs:
 
       - name: Build test image
         run: |
-          docker build -f Dockerfile.test -t test-apt-cacher:${{ matrix.base_image }}-${{ matrix.apt_cacher_version }} .
+          echo "Testing with base image: ${{ matrix.base_image }}, apt-cacher-ng version: ${{ matrix.apt_cacher_version }}"
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/\*]/-/g')
+          echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
+          docker build -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
 
       - name: Test image functionality
         run: |
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/\*]/-/g')
           # Start the service
-          docker run -d --name test-cacher -p 3142:3142 test-apt-cacher:${{ matrix.base_image }}-${{ matrix.apt_cacher_version }}
+          docker run -d --name test-cacher -p 3142:3142 test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
 
           # Wait for service to be ready
           timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
@@ -93,11 +101,14 @@ jobs:
 
       - name: Test with docker-compose
         run: |
+          # Sanitize matrix values for Docker tag (replace : and / with -)
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "${{ matrix.apt_cacher_version }}" | sed 's/[:/\*]/-/g')
           cat > docker-compose.upstream-test.yml << EOF
           version: '3'
           services:
             apt-cacher-ng:
-              image: test-apt-cacher:${{ matrix.base_image }}-${{ matrix.apt_cacher_version }}
+              image: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
               init: true
               ports:
                 - "3142:3142"
