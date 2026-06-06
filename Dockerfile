@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim@sha256:74d56e3931e0d5a1dd51f8c8a2466d21de84a271cd3b5a733b803aa91abf4421
+FROM debian:bookworm-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
 
 ENV APT_CACHER_NG_VERSION=3.7.4 \
     APT_CACHER_NG_CACHE_DIR=/var/cache/apt-cacher-ng \
