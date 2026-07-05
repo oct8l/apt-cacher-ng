@@ -527,7 +527,7 @@ jobs:
           run: docker pull ghcr.io/oct8l/apt-cacher-ng:"$GITHUB_RUN_ID"
 
         - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
-          uses: aquasecurity/trivy-action@bfa4b33a029b9aa80ddb784b45574c30e072c59e # master
+          uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
           with:
             image-ref: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
             exit-code: 0
