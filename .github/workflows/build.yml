@@ -253,7 +253,7 @@ jobs:
           uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
           with:
             image-ref: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
-            exit-code: 0
+            exit-code: 1
             ignore-unfixed: true
             vuln-type: 'os,library'
             severity: 'HIGH,CRITICAL'
@@ -261,6 +261,7 @@ jobs:
             output: 'results.sarif'
 
         - name: Upload Trivy scan results to GitHub Security tab
+          if: always()
           uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
           with:
             sarif_file: results.sarif
