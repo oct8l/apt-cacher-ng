@@ -18,6 +18,7 @@ jobs:
   build-test-image:
     name: Build Image for Testing & Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       packages: write
@@ -51,6 +52,7 @@ jobs:
     name: Integration tests (${{ matrix.platform }})
     needs: [build-test-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         platform:
@@ -136,6 +138,7 @@ jobs:
     if: github.event_name == 'schedule'
     needs: [test-integration]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     permissions:
       packages: read
@@ -224,6 +227,7 @@ jobs:
       name: Scan Image with Trivy
       needs: [build-test-image]
       runs-on: ubuntu-latest
+      timeout-minutes: 15
 
       permissions:
         contents: read
@@ -266,6 +270,7 @@ jobs:
     name: Build and Push Docker Image
     needs: [test-integration, scan-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Skip this job for scheduled builds (use the comprehensive one instead)
     if: github.event_name != 'schedule'
 
@@ -315,6 +320,7 @@ jobs:
     name: Build and Push Docker Image (Scheduled)
     needs: [test-integration, scan-image, test-cron-comprehensive]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Only run this job for scheduled builds (after comprehensive testing)
     if: github.event_name == 'schedule'
 
@@ -370,6 +376,7 @@ jobs:
     name: Notify Scheduled Build Failure
     needs: [test-integration, scan-image, test-cron-comprehensive, build-and-push-docker-image-scheduled]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: always() && github.event_name == 'schedule' && (needs.test-integration.result == 'failure' || needs.scan-image.result == 'failure' || needs.test-cron-comprehensive.result == 'failure' || needs.build-and-push-docker-image-scheduled.result == 'failure')
 
     steps:
