@@ -1,9 +1,7 @@
 name: Upstream Compatibility Tests
 
 on:
-  pull_request:
-    branches:
-      - main
+  workflow_call:
   schedule:
     # Run weekly to catch upstream changes
     - cron: "0 8 * * 1"
