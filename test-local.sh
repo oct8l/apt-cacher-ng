@@ -16,7 +16,7 @@ echo "🚀 Starting apt-cacher-ng service via Docker Compose..."
 docker compose -f docker-compose.test.yml up -d
 
 echo "⏳ Waiting for service to be ready..."
-for i in {1..20}; do
+for _ in {1..20}; do
   if docker compose -f docker-compose.test.yml exec -T apt-cacher-ng wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; then
     break
   fi

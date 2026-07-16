@@ -8,7 +8,7 @@ echo "=== Multi-Distribution Test ==="
 echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
 echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
 
-echo "Testing on: $(cat /etc/os-release | grep PRETTY_NAME)"
+echo "Testing on: $(grep PRETTY_NAME /etc/os-release)"
 
 # Update package lists
 apt-get update
@@ -22,4 +22,4 @@ wget --version
 htop --version
 nano --version
 
-echo "Multi-distribution test passed for $(cat /etc/os-release | grep PRETTY_NAME)"
+echo "Multi-distribution test passed for $(grep PRETTY_NAME /etc/os-release)"
