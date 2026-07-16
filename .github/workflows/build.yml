@@ -130,7 +130,7 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.test.yml down -v
-          
+
   test-cron-comprehensive:
     name: Comprehensive Tests for Scheduled Builds
     if: github.event_name == 'schedule'
@@ -218,7 +218,7 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.cron-test.yml down -v
-                    rm -f proxy-stats.html apt-cacher-ng-cron-logs.txt
+          rm -f proxy-stats.html apt-cacher-ng-cron-logs.txt
 
   scan-image:
       name: Scan Image with Trivy
