@@ -1,0 +1,20 @@
+name: ShellCheck
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  shellcheck:
+    name: Lint bash scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        run: |
+          # Find and lint all shell scripts
+          find . -name "*.sh" -not -path "*/\.*" -print0 | xargs -0 shellcheck
