@@ -103,6 +103,24 @@ jobs:
           echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
           docker build --platform ${{ matrix.platform }} -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
 
+      - name: Verify config overrides applied
+        run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+
+          echo "Checking that the Dockerfile's sed overrides actually took effect..."
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint sh \
+            test-apt-cacher:${BASE_TAG}-${VERSION_TAG} -c '
+              grep -q "^ForeGround: 1" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: ForeGround override missing from acng.conf"; exit 1; }
+              grep -q "^PassThroughPattern: .* #" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: PassThroughPattern override missing from acng.conf"; exit 1; }
+              echo "Config overrides present"
+            '
+
       - name: Test image functionality
         run: |
           VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"

@@ -87,6 +87,16 @@ jobs:
             echo "Running native AMD64 tests"
           fi
 
+      - name: Verify config overrides applied
+        run: |
+          echo "Checking that the Dockerfile's sed overrides actually took effect..."
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint sh \
+            ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }} -c '
+              grep -q "^ForeGround: 1" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: ForeGround override missing from acng.conf"; exit 1; }
+              grep -q "^PassThroughPattern: .* #" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: PassThroughPattern override missing from acng.conf"; exit 1; }
+              echo "Config overrides present"
+            '
+
       - name: Start services and run tests
         run: |
           echo "Starting apt-cacher-ng service..."
