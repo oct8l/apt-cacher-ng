@@ -11,7 +11,7 @@ on:
 
 jobs:
   test-upstream-variations:
-    name: Test against upstream variations (${{ matrix.platform }})
+    name: Test against upstream variations (${{ matrix.base_image }}, ver:${{ matrix.apt_cacher_version || 'default' }}, ${{ matrix.platform }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -180,7 +180,7 @@ jobs:
           docker compose -f docker-compose.upstream-test.yml down
 
   test-different-debian-clients:
-    name: Test compatibility with different Debian client versions
+    name: Test compatibility with different Debian client versions (${{ matrix.client_image }})
     runs-on: ubuntu-latest
     needs: [test-upstream-variations]
     strategy:
