@@ -1,0 +1,24 @@
+name: Hadolint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  hadolint:
+    name: Lint Dockerfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # Package versions are intentionally unpinned for ca-certificates/wget
+          # (only apt-cacher-ng itself is version-pinned), so only fail on errors.
+          failure-threshold: error
