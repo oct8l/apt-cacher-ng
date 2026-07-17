@@ -206,20 +206,20 @@ jobs:
 
       - name: Run load and stress tests
         run: |
-          echo "Running load test on Debian Bookworm..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim /tests/load_test.sh
+          echo "Running load test..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-trixie-slim /tests/load_test.sh
 
       - name: Run reliability tests
         run: |
           echo "Running reliability test..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim /tests/reliability_test.sh
+          docker compose -f docker-compose.cron-test.yml exec -T debian-trixie-slim /tests/reliability_test.sh
 
       - name: Validate proxy statistics and health
         run: |
           echo "=== Final Proxy Validation ==="
 
           # Get detailed statistics
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > proxy-stats.html
+          docker compose -f docker-compose.cron-test.yml exec -T debian-trixie-slim curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > proxy-stats.html
 
           # Check for expected content in statistics
           if ! grep -q -i "apt-cacher" proxy-stats.html; then
