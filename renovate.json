@@ -12,6 +12,13 @@
       "matchPackageNames": [
         "/^ghcr\\.io/oct8l//"
       ]
+    },
+    {
+      "matchFileNames": [
+        "docker-compose.test.yml",
+        "docker-compose.cron-test.yml"
+      ],
+      "enabled": false
     }
   ]
 }
