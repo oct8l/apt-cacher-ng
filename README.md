@@ -13,6 +13,10 @@
   - [Docker Compose](#docker-compose)
   - [Usage](#usage)
   - [Logs](#logs)
+- [Testing](#testing)
+  - [Local tests](#local-tests)
+  - [Pull request CI](#pull-request-ci)
+  - [Other CI runs](#other-ci-runs)
 - [Maintenance](#maintenance)
   - [Cache expiry](#cache-expiry)
   - [Upgrading](#upgrading)
@@ -29,6 +33,11 @@ Apt-Cacher NG is a caching proxy, specialized for package files from Linux distr
 If you find this image useful here's how you can help:
 
 - Send a pull request with your awesome features and bug fixes
+
+Fork-based contributions are supported. Create a branch in your fork, make your
+changes, run [`./test-local.sh`](#local-tests), and open a pull request against
+`main`. GitHub may require a maintainer to approve the first workflow run from a
+new contributor.
 
 ## Issues
 
@@ -149,45 +158,64 @@ docker exec -it apt-cacher-ng tail -f /var/log/apt-cacher-ng/apt-cacher.log
 
 # Testing
 
-## Local Testing
+## Local tests
 
-Before submitting a PR, you can run local tests to verify your changes work correctly:
+The local test suite requires Docker with the Compose plugin. It builds the
+image for your machine's architecture and uses
+[`docker-compose.test.yml`](docker-compose.test.yml) to run the same functional,
+performance, and error-handling scripts used by the main CI workflow.
 
 ```bash
 ./test-local.sh
 ```
 
-This script will:
-- Build the Docker image from your local changes
-- Start the apt-cacher-ng service
-- Run functional tests to verify package caching works
-- Test performance (cache miss vs cache hit)
-- Verify health checks and statistics
+The script verifies package downloads through the proxy, the health and report
+pages, multiple package installs, and handling of a nonexistent package. It
+also repeats package downloads to exercise the cache and records performance
+timings. The tests access upstream package repositories and may download
+several packages.
 
-## CI/CD Testing
+## Pull request CI
 
-The project includes comprehensive GitHub Actions workflows that run automatically on PRs:
+[`build.yml`](.github/workflows/build.yml) runs the following checks for pull
+requests targeting `main`:
 
-### Integration Tests (`build.yml`)
-- Builds the image from PR changes
-- Tests actual package downloads through the proxy
-- Verifies caching functionality works correctly
-- Tests error handling scenarios
-- Collects performance metrics and logs
+- Builds test images for `linux/amd64` and `linux/arm64`, then passes them to
+  downstream jobs as short-lived workflow artifacts. Pull requests do not push
+  test images or release images to GHCR, so the workflow can run for
+  contributions from forks without package-write permission.
+- Runs the functional, performance, error-handling, and configuration-override
+  checks on both test-image architectures.
+- Runs a blocking Trivy scan for fixable `HIGH` and `CRITICAL`
+  vulnerabilities. Fork pull requests run the same scan but do not upload its
+  SARIF report to the repository's Security tab, which requires write
+  permission.
+- Verifies that the final image builds for `linux/amd64`, `linux/arm64/v8`, and
+  `linux/arm/v7` without publishing it.
+- Runs Hadolint against the `Dockerfile` and ShellCheck against all tracked
+  shell scripts.
+- Runs the upstream compatibility workflow against Debian Bookworm (full and
+  slim) and Bullseye slim base images on AMD64 and ARM64. It uses the default
+  `apt-cacher-ng` version available from each base image's repositories.
+- Tests Debian Bookworm and Bullseye plus Ubuntu 24.04 and 22.04 clients,
+  additional package sources, and cache performance.
 
-### Upstream Compatibility Tests (`upstream-compatibility.yml`)
-- Tests against different Debian base images (`bookworm`, `bullseye`)
-- Tests with different apt-cacher-ng versions
-- Verifies compatibility with various client distributions (Debian, Ubuntu)
-- Tests different package sources and repositories
-- Runs performance regression testing
-- Scheduled weekly to catch upstream changes
+The `PR CI Gate` job aggregates these checks into a single status that branch
+protection can require.
 
-These automated tests ensure that:
-- Upstream image changes don't silently break builds
-- New changes maintain backward compatibility
-- Performance doesn't regress
-- The proxy works correctly across different client configurations
+## Other CI runs
+
+- Pushes to `main`, version tags, and manual `build.yml` runs execute the
+  integration and security checks before publishing the multi-architecture
+  image to GHCR.
+- On the 1st and 15th of each month,
+  [`build.yml`](.github/workflows/build.yml) adds comprehensive tests with
+  Debian Bookworm, Debian Bullseye, and Ubuntu 22.04 clients, plus load and
+  reliability tests, before publishing.
+- Every Monday,
+  [`upstream-compatibility.yml`](.github/workflows/upstream-compatibility.yml)
+  runs independently to detect changes in upstream distributions and package
+  repositories.
 
 # Maintenance
 
