@@ -101,8 +101,6 @@ To run Apt-Cacher NG with Docker Compose, create the following `docker-compose.y
 
 ```yaml
 ---
-version: '3'
-
 services:
   apt-cacher-ng:
     image: ghcr.io/oct8l/apt-cacher-ng:latest
