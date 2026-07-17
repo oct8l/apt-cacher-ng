@@ -188,6 +188,9 @@ jobs:
 
       - name: Run multi-distribution tests
         run: |
+          echo "Testing Debian Trixie..."
+          docker compose -f docker-compose.cron-test.yml exec -T debian-trixie /tests/multi_distro_test.sh
+
           echo "Testing Debian Bookworm..."
           docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/multi_distro_test.sh
 

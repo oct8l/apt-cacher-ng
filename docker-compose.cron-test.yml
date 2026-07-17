@@ -15,6 +15,15 @@ services:
       start_period: 30s
 
   # Test multiple distributions
+  debian-trixie:
+    image: debian:trixie-slim
+    depends_on:
+      apt-cacher-ng:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests
+    command: sleep infinity
+
   debian-bookworm:
     image: debian:bookworm-slim
     depends_on:

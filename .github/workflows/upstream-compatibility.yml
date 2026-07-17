@@ -16,6 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         base_image:
+          - "debian:trixie-slim"
+          - "debian:trixie"
           - "debian:bookworm-slim"
           - "debian:bookworm"
           - "debian:bullseye-slim"
@@ -205,6 +207,7 @@ jobs:
       fail-fast: false
       matrix:
         client_image:
+          - "debian:trixie"
           - "debian:bookworm"
           - "debian:bullseye"
           - "ubuntu:24.04"
