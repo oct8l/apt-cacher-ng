@@ -3,6 +3,19 @@
   "extends": [
     "github>c-gerke/renovate-config"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*suite=(?<suite>\\S+)\\s+depName=(?<depName>\\S+)\\s+ENV\\s+\\S+_VERSION=\"(?<currentValue>[^\"]+)\""
+      ],
+      "registryUrlTemplate": "https://deb.debian.org/debian?suite={{suite}}&components=main&binaryArch=amd64",
+      "datasourceTemplate": "deb"
+    }
+  ],
   "packageRules": [
     {
       "matchDatasources": [
