@@ -6,6 +6,7 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Track Debian package versions in the Dockerfile. binaryArch=amd64 is intentional: one pin per package, with install-time * wildcards covering other arches' +bN binNMU suffixes.",
       "managerFilePatterns": [
         "/^Dockerfile$/"
       ],

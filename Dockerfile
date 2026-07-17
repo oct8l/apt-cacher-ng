@@ -1,5 +1,8 @@
 FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
 
+# Package pins use a trailing * at install time so Debian binNMU suffixes
+# (e.g. 3.7.5-1 on amd64 vs 3.7.5-1+b1 on arm64) still match. Renovate only
+# looks up amd64 versions (see renovate.json), so ENV values are amd64 revisions.
 # renovate: suite=trixie depName=apt-cacher-ng
 ENV APT_CACHER_NG_VERSION="3.7.5-1"
 # renovate: suite=trixie depName=ca-certificates
