@@ -16,7 +16,7 @@ services:
 
   # Test multiple distributions
   debian-bookworm:
-    image: debian:bookworm-slim
+    image: debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
     depends_on:
       apt-cacher-ng:
         condition: service_healthy
@@ -25,7 +25,7 @@ services:
     command: sleep infinity
 
   debian-bullseye:
-    image: debian:bullseye-slim
+    image: debian:bullseye-slim@sha256:cba95a21c96c1f5fc2470081829363eed57706634f7dc26e8c6712934303d57a
     depends_on:
       apt-cacher-ng:
         condition: service_healthy
@@ -34,7 +34,7 @@ services:
     command: sleep infinity
 
   ubuntu-jammy:
-    image: ubuntu:22.04
+    image: ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
     depends_on:
       apt-cacher-ng:
         condition: service_healthy
