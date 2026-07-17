@@ -16,51 +16,18 @@ on:
 jobs:
 
   build-test-image:
-    name: Build Image for Testing & Scanning
+    name: Build test image (${{ matrix.platform }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    permissions:
-      packages: write
-
-    steps:
-
-      - name: Checkout git repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Login to ghcr.io registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and Push to GHCR
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-
-  test-integration:
-    name: Integration tests (${{ matrix.platform }})
-    needs: [build-test-image]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
     strategy:
       matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
-
+        include:
+          - platform: linux/amd64
+            artifact: test-image-amd64
+          - platform: linux/arm64
+            artifact: test-image-arm64
     permissions:
-      packages: read
+      contents: read
 
     steps:
 
@@ -73,12 +40,60 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      - name: Login to ghcr.io registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+      - name: Build and export test image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          context: .
+          tags: local-apt-cacher-ng:test
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.artifact }}.tar
+          cache-from: |
+            type=gha
+            type=gha,scope=${{ matrix.artifact }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.artifact }}
+          platforms: ${{ matrix.platform }}
+
+      - name: Upload test image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/${{ matrix.artifact }}.tar
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  test-integration:
+    name: Integration tests (${{ matrix.platform }})
+    needs: [build-test-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            artifact: test-image-amd64
+          - platform: linux/arm64
+            artifact: test-image-arm64
+
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout git repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - name: Download test image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}
+
+      - name: Load test image
+        run: docker load --input "${{ runner.temp }}/${{ matrix.artifact }}.tar"
+
       - name: Show platform info
         run: |
           echo "Testing on platform: ${{ matrix.platform }}"
@@ -93,7 +108,7 @@ jobs:
         run: |
           echo "Checking that the Dockerfile's sed overrides actually took effect..."
           docker run --rm --platform ${{ matrix.platform }} --entrypoint sh \
-            ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }} -c '
+            local-apt-cacher-ng:test -c '
               grep -q "^ForeGround: 1" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: ForeGround override missing from acng.conf"; exit 1; }
               grep -q "^PassThroughPattern: .* #" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: PassThroughPattern override missing from acng.conf"; exit 1; }
               echo "Config overrides present"
@@ -102,7 +117,7 @@ jobs:
       - name: Start services and run tests
         run: |
           echo "Starting apt-cacher-ng service..."
-          export TEST_IMAGE=ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+          export TEST_IMAGE=local-apt-cacher-ng:test
           export TEST_PLATFORM=${{ matrix.platform }}
           docker compose -f docker-compose.test.yml up -d
 
@@ -141,25 +156,25 @@ jobs:
     timeout-minutes: 45
 
     permissions:
-      packages: read
+      contents: read
 
     steps:
       - name: Checkout git repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Login to ghcr.io registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+      - name: Download test image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: test-image-amd64
+          path: ${{ runner.temp }}
+
+      - name: Load test image
+        run: docker load --input "${{ runner.temp }}/test-image-amd64.tar"
+
       - name: Start comprehensive test environment
         run: |
           echo "Starting comprehensive test environment..."
-          export TEST_IMAGE=ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+          export TEST_IMAGE=local-apt-cacher-ng:test
           docker compose -f docker-compose.cron-test.yml up -d
 
           echo "Waiting for services to be healthy..."
@@ -231,7 +246,6 @@ jobs:
 
       permissions:
         contents: read
-        packages: read
         security-events: write
 
       steps:
@@ -239,20 +253,19 @@ jobs:
         - name: Checkout git repo
           uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-        - name: Login to ghcr.io registry
-          uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        - name: Download test image
+          uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
           with:
-            registry: ghcr.io
-            username: ${{ github.actor }}
-            password: ${{ secrets.GITHUB_TOKEN }}
+            name: test-image-amd64
+            path: ${{ runner.temp }}
 
-        - name: Pull image to scan
-          run: docker pull ghcr.io/oct8l/apt-cacher-ng:"$GITHUB_RUN_ID"
+        - name: Load test image
+          run: docker load --input "${{ runner.temp }}/test-image-amd64.tar"
 
         - name: Run Trivy for HIGH,CRITICAL CVEs and report (blocking)
           uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
           with:
-            image-ref: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+            image-ref: local-apt-cacher-ng:test
             exit-code: 1
             ignore-unfixed: true
             vuln-type: 'os,library'
@@ -261,7 +274,7 @@ jobs:
             output: 'results.sarif'
 
         - name: Upload Trivy scan results to GitHub Security tab
-          if: always()
+          if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
           uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
           with:
             sarif_file: results.sarif
@@ -295,6 +308,10 @@ jobs:
     timeout-minutes: 30
     # Skip this job for scheduled builds (use the comprehensive one instead)
     if: github.event_name != 'schedule'
+
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
@@ -331,7 +348,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: |
+            type=gha
+            type=gha,scope=test-image-amd64
+            type=gha,scope=test-image-arm64
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
@@ -380,7 +400,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: |
+            type=gha
+            type=gha,scope=test-image-amd64
+            type=gha,scope=test-image-arm64
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
