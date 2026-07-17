@@ -46,7 +46,9 @@ jobs:
           context: .
           tags: local-apt-cacher-ng:test
           outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.artifact }}.tar
-          cache-from: type=gha,scope=${{ matrix.artifact }}
+          cache-from: |
+            type=gha
+            type=gha,scope=${{ matrix.artifact }}
           cache-to: type=gha,mode=max,scope=${{ matrix.artifact }}
           platforms: ${{ matrix.platform }}
 
@@ -346,7 +348,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: |
+            type=gha
+            type=gha,scope=test-image-amd64
+            type=gha,scope=test-image-arm64
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
@@ -395,7 +400,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: |
+            type=gha
+            type=gha,scope=test-image-amd64
+            type=gha,scope=test-image-arm64
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
