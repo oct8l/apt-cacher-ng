@@ -110,8 +110,6 @@ To run Apt-Cacher NG with Docker Compose, create the following `docker-compose.y
 
 ```yaml
 ---
-version: '3'
-
 services:
   apt-cacher-ng:
     image: ghcr.io/oct8l/apt-cacher-ng:latest
@@ -194,11 +192,11 @@ requests targeting `main`:
   `linux/arm/v7` without publishing it.
 - Runs Hadolint against the `Dockerfile` and ShellCheck against all tracked
   shell scripts.
-- Runs the upstream compatibility workflow against Debian Bookworm (full and
-  slim) and Bullseye slim base images on AMD64 and ARM64. It uses the default
-  `apt-cacher-ng` version available from each base image's repositories.
-- Tests Debian Bookworm and Bullseye plus Ubuntu 24.04 and 22.04 clients,
-  additional package sources, and cache performance.
+- Runs the upstream compatibility workflow against Debian Trixie, Bookworm, and
+  Bullseye (full and slim for each) base images on AMD64 and ARM64. It uses the
+  default `apt-cacher-ng` version available from each base image's repositories.
+- Tests Debian Trixie, Bookworm, and Bullseye (full and slim) plus Ubuntu 26.04,
+  24.04, and 22.04 clients, additional package sources, and cache performance.
 
 The `PR CI Gate` job aggregates these checks into a single status that branch
 protection can require.
@@ -210,8 +208,8 @@ protection can require.
   image to GHCR.
 - On the 1st and 15th of each month,
   [`build.yml`](.github/workflows/build.yml) adds comprehensive tests with
-  Debian Bookworm, Debian Bullseye, and Ubuntu 22.04 clients, plus load and
-  reliability tests, before publishing.
+  Debian Trixie/Bookworm/Bullseye (full and slim) and Ubuntu 26.04/24.04/22.04
+  clients, plus load and reliability tests, before publishing.
 - Every Monday,
   [`upstream-compatibility.yml`](.github/workflows/upstream-compatibility.yml)
   runs independently to detect changes in upstream distributions and package

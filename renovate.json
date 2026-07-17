@@ -3,6 +3,20 @@
   "extends": [
     "github>c-gerke/renovate-config"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track Debian package versions in the Dockerfile. binaryArch=amd64 is intentional: one pin per package, with install-time * wildcards covering other arches' +bN binNMU suffixes.",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*suite=(?<suite>\\S+)\\s+depName=(?<depName>\\S+)\\s+ENV\\s+\\S+_VERSION=\"(?<currentValue>[^\"]+)\""
+      ],
+      "registryUrlTemplate": "https://deb.debian.org/debian?suite={{suite}}&components=main&binaryArch=amd64",
+      "datasourceTemplate": "deb"
+    }
+  ],
   "packageRules": [
     {
       "matchDatasources": [

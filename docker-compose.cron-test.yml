@@ -14,33 +14,48 @@ services:
       retries: 5
       start_period: 30s
 
-  # Test multiple distributions
-  debian-bookworm:
+  # Client images for multi-distribution tests
+  debian-trixie-slim:
+    <<: &client
+      depends_on:
+        apt-cacher-ng:
+          condition: service_healthy
+      volumes:
+        - ./tests:/tests
+      command: sleep infinity
+    image: debian:trixie-slim
+
+  debian-trixie:
+    <<: *client
+    image: debian:trixie
+
+  debian-bookworm-slim:
+    <<: *client
     image: debian:bookworm-slim
-    depends_on:
-      apt-cacher-ng:
-        condition: service_healthy
-    volumes:
-      - ./tests:/tests
-    command: sleep infinity
+
+  debian-bookworm:
+    <<: *client
+    image: debian:bookworm
+
+  debian-bullseye-slim:
+    <<: *client
+    image: debian:bullseye-slim
 
   debian-bullseye:
-    image: debian:bullseye-slim
-    depends_on:
-      apt-cacher-ng:
-        condition: service_healthy
-    volumes:
-      - ./tests:/tests
-    command: sleep infinity
+    <<: *client
+    image: debian:bullseye
 
-  ubuntu-jammy:
+  ubuntu-26-04:
+    <<: *client
+    image: ubuntu:26.04
+
+  ubuntu-24-04:
+    <<: *client
+    image: ubuntu:24.04
+
+  ubuntu-22-04:
+    <<: *client
     image: ubuntu:22.04
-    depends_on:
-      apt-cacher-ng:
-        condition: service_healthy
-    volumes:
-      - ./tests:/tests
-    command: sleep infinity
 
 volumes:
   apt-cacher-data:

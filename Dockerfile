@@ -1,13 +1,24 @@
-FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
+FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
 
-ENV APT_CACHER_NG_VERSION=3.7.4 \
-    APT_CACHER_NG_CACHE_DIR=/var/cache/apt-cacher-ng \
+# Package pins use a trailing * at install time so Debian binNMU suffixes
+# (e.g. 3.7.5-1 on amd64 vs 3.7.5-1+b1 on arm64) still match. Renovate only
+# looks up amd64 versions (see renovate.json), so ENV values are amd64 revisions.
+# renovate: suite=trixie depName=apt-cacher-ng
+ENV APT_CACHER_NG_VERSION="3.7.5-1"
+# renovate: suite=trixie depName=ca-certificates
+ENV CA_CERTIFICATES_VERSION="20250419"
+# renovate: suite=trixie depName=wget
+ENV WGET_VERSION="1.25.0-2"
+
+ENV APT_CACHER_NG_CACHE_DIR=/var/cache/apt-cacher-ng \
     APT_CACHER_NG_LOG_DIR=/var/log/apt-cacher-ng \
     APT_CACHER_NG_USER=apt-cacher-ng
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
-      apt-cacher-ng=${APT_CACHER_NG_VERSION}* ca-certificates wget \
+      "apt-cacher-ng=${APT_CACHER_NG_VERSION}*" \
+      "ca-certificates=${CA_CERTIFICATES_VERSION}*" \
+      "wget=${WGET_VERSION}*" \
  && sed 's/# ForeGround: 0/ForeGround: 1/' -i /etc/apt-cacher-ng/acng.conf \
  && sed 's/# PassThroughPattern:.*this would allow.*/PassThroughPattern: .* #/' -i /etc/apt-cacher-ng/acng.conf \
  && rm -rf /var/lib/apt/lists/*
