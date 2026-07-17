@@ -9,8 +9,9 @@ on:
 
 jobs:
   test-upstream-variations:
-    name: Test against upstream variations (${{ matrix.platform }})
+    name: Test against upstream variations (${{ matrix.base_image }}, ver:${{ matrix.apt_cacher_version || 'default' }}, ${{ matrix.platform }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +102,24 @@ jobs:
           echo "Building Docker image with tag: test-apt-cacher:${BASE_TAG}-${VERSION_TAG}"
           docker build --platform ${{ matrix.platform }} -f Dockerfile.test -t test-apt-cacher:${BASE_TAG}-${VERSION_TAG} .
 
+      - name: Verify config overrides applied
+        run: |
+          VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
+          if [[ -z "$VERSION_DISPLAY" ]]; then
+            VERSION_DISPLAY="default"
+          fi
+
+          BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
+          VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+
+          echo "Checking that the Dockerfile's sed overrides actually took effect..."
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint sh \
+            test-apt-cacher:${BASE_TAG}-${VERSION_TAG} -c '
+              grep -q "^ForeGround: 1" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: ForeGround override missing from acng.conf"; exit 1; }
+              grep -q "^PassThroughPattern: .* #" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: PassThroughPattern override missing from acng.conf"; exit 1; }
+              echo "Config overrides present"
+            '
+
       - name: Test image functionality
         run: |
           VERSION_DISPLAY="${{ matrix.apt_cacher_version }}"
@@ -178,8 +197,9 @@ jobs:
           docker compose -f docker-compose.upstream-test.yml down
 
   test-different-debian-clients:
-    name: Test compatibility with different Debian client versions
+    name: Test compatibility with different Debian client versions (${{ matrix.client_image }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [test-upstream-variations]
     strategy:
       fail-fast: false
@@ -228,6 +248,7 @@ jobs:
   test-package-sources:
     name: Test with different package sources
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [test-upstream-variations]
 
     steps:
@@ -272,6 +293,7 @@ jobs:
   test-performance-regression:
     name: Performance regression test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [test-upstream-variations]
 
     steps:

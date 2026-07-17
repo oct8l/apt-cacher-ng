@@ -1,0 +1,47 @@
+services:
+  apt-cacher-ng:
+    image: ${TEST_IMAGE:-ghcr.io/oct8l/apt-cacher-ng:latest}
+    init: true
+    ports:
+      - "3142:3142"
+    volumes:
+      - apt-cacher-data:/var/cache/apt-cacher-ng
+      - apt-cacher-logs:/var/log/apt-cacher-ng
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Test multiple distributions
+  debian-bookworm:
+    image: debian:bookworm-slim
+    depends_on:
+      apt-cacher-ng:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests
+    command: sleep infinity
+
+  debian-bullseye:
+    image: debian:bullseye-slim
+    depends_on:
+      apt-cacher-ng:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests
+    command: sleep infinity
+
+  ubuntu-jammy:
+    image: ubuntu:22.04
+    depends_on:
+      apt-cacher-ng:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests
+    command: sleep infinity
+
+volumes:
+  apt-cacher-data:
+  apt-cacher-logs:

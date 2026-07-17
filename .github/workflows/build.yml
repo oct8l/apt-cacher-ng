@@ -18,6 +18,7 @@ jobs:
   build-test-image:
     name: Build Image for Testing & Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       packages: write
@@ -51,6 +52,7 @@ jobs:
     name: Integration tests (${{ matrix.platform }})
     needs: [build-test-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         platform:
@@ -77,94 +79,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create test docker-compose.yml
-        run: |
-          cat > docker-compose.test.yml << EOF
-          services:
-            apt-cacher-ng:
-              image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
-              platform: ${{ matrix.platform }}
-              init: true
-              ports:
-                - "3142:3142"
-              volumes:
-                - apt-cacher-data:/var/cache/apt-cacher-ng
-                - apt-cacher-logs:/var/log/apt-cacher-ng
-              healthcheck:
-                test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
-                interval: 10s
-                timeout: 5s
-                retries: 5
-                start_period: 30s
-
-            test-client:
-              image: debian:bookworm-slim
-              depends_on:
-                apt-cacher-ng:
-                  condition: service_healthy
-              volumes:
-                - ./tests:/tests
-              command: sleep infinity
-
-          volumes:
-            apt-cacher-data:
-            apt-cacher-logs:
-          EOF
-
-      - name: Create test scripts
-        run: |
-          mkdir -p tests
-
-          # Main test script
-          cat > tests/run_tests.sh << 'EOF'
-          #!/bin/bash
-          set -e
-          set -x
-
-          echo "=== Starting apt-cacher-ng integration tests ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          echo "=== Test 1: Basic apt update through proxy ==="
-          apt-get update
-
-          echo "=== Test 2: Install a small package (cache miss) ==="
-          apt-get install -y curl
-          curl --version
-
-          echo "=== Test 3: Verify proxy is working by checking logs ==="
-          # Check that the proxy service is responding
-          curl -f -s -o /dev/null "http://apt-cacher-ng:3142/acng-report.html"
-          echo "Proxy health check passed"
-
-          echo "=== Test 4: Test cache hit by reinstalling same package ==="
-          apt-get remove -y curl
-          apt-get clean
-          apt-get update
-          # This should be faster as it hits the cache
-          time apt-get install -y curl
-
-          echo "=== Test 5: Install multiple packages ==="
-          apt-get install -y wget nano
-          wget --version
-          nano --version
-
-          echo "=== Test 6: Verify proxy statistics ==="
-          # Get proxy statistics to ensure it's actually proxying
-          curl -f -s "http://apt-cacher-ng:3142/acng-report.html" | grep -q -i -E "(apt-cacher|report|status|cache)" || {
-              echo "ERROR: Could not access proxy statistics page"
-              exit 1
-          }
-          echo "Proxy statistics page accessible and contains expected content"
-
-          echo "=== All tests passed! ==="
-          EOF
-
-          chmod +x tests/run_tests.sh
-
       - name: Show platform info
         run: |
           echo "Testing on platform: ${{ matrix.platform }}"
@@ -175,9 +89,21 @@ jobs:
             echo "Running native AMD64 tests"
           fi
 
+      - name: Verify config overrides applied
+        run: |
+          echo "Checking that the Dockerfile's sed overrides actually took effect..."
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint sh \
+            ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }} -c '
+              grep -q "^ForeGround: 1" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: ForeGround override missing from acng.conf"; exit 1; }
+              grep -q "^PassThroughPattern: .* #" /etc/apt-cacher-ng/acng.conf || { echo "ERROR: PassThroughPattern override missing from acng.conf"; exit 1; }
+              echo "Config overrides present"
+            '
+
       - name: Start services and run tests
         run: |
           echo "Starting apt-cacher-ng service..."
+          export TEST_IMAGE=ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
+          export TEST_PLATFORM=${{ matrix.platform }}
           docker compose -f docker-compose.test.yml up -d
 
           echo "Waiting for services to be healthy..."
@@ -188,57 +114,10 @@ jobs:
 
       - name: Test proxy performance and caching
         run: |
-          cat > tests/performance_test.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          echo "=== Performance and Caching Tests ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          echo "=== Test cache performance ==="
-          # First install (cache miss)
-          echo "First install (cache miss):"
-          time (apt-get update && apt-get install -y htop)
-
-          # Remove and reinstall (cache hit)
-          apt-get remove -y htop
-          apt-get clean
-          echo "Second install (cache hit - should be faster):"
-          time (apt-get update && apt-get install -y htop)
-
-          echo "Performance test completed"
-          EOF
-
-          chmod +x tests/performance_test.sh
           docker compose -f docker-compose.test.yml exec -T test-client /tests/performance_test.sh
 
       - name: Test error handling
         run: |
-          cat > tests/error_test.sh << 'EOF'
-          #!/bin/bash
-          set -e
-
-          echo "=== Error Handling Tests ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          echo "=== Test handling of non-existent package ==="
-          if apt-get install -y nonexistent-package-12345 2>/dev/null; then
-              echo "ERROR: Should have failed to install non-existent package"
-              exit 1
-          else
-              echo "Correctly handled non-existent package"
-          fi
-
-          echo "Error handling test completed"
-          EOF
-
-          chmod +x tests/error_test.sh
           docker compose -f docker-compose.test.yml exec -T test-client /tests/error_test.sh
 
       - name: Verify logs and collect diagnostics
@@ -253,14 +132,13 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.test.yml down -v
-          rm -f docker-compose.test.yml
-          rm -rf tests
 
   test-cron-comprehensive:
     name: Comprehensive Tests for Scheduled Builds
     if: github.event_name == 'schedule'
     needs: [test-integration]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     permissions:
       packages: read
@@ -278,164 +156,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create comprehensive test environment
-        run: |
-          cat > docker-compose.cron-test.yml << EOF
-          services:
-            apt-cacher-ng:
-              image: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
-              init: true
-              ports:
-                - "3142:3142"
-              volumes:
-                - apt-cacher-data:/var/cache/apt-cacher-ng
-                - apt-cacher-logs:/var/log/apt-cacher-ng
-              healthcheck:
-                test: ["CMD", "wget", "-q", "-t1", "-O", "/dev/null", "http://localhost:3142/acng-report.html"]
-                interval: 10s
-                timeout: 5s
-                retries: 5
-                start_period: 30s
-
-            # Test multiple distributions
-            debian-bookworm:
-              image: debian:bookworm-slim
-              depends_on:
-                apt-cacher-ng:
-                  condition: service_healthy
-              volumes:
-                - ./tests:/tests
-              command: sleep infinity
-
-            debian-bullseye:
-              image: debian:bullseye-slim
-              depends_on:
-                apt-cacher-ng:
-                  condition: service_healthy
-              volumes:
-                - ./tests:/tests
-              command: sleep infinity
-
-            ubuntu-jammy:
-              image: ubuntu:22.04
-              depends_on:
-                apt-cacher-ng:
-                  condition: service_healthy
-              volumes:
-                - ./tests:/tests
-              command: sleep infinity
-
-          volumes:
-            apt-cacher-data:
-            apt-cacher-logs:
-          EOF
-
-      - name: Create comprehensive test scripts
-        run: |
-          mkdir -p tests
-
-          # Multi-distribution test
-          cat > tests/multi_distro_test.sh << 'EOF'
-          #!/bin/bash
-          set -e
-          set -x
-
-          echo "=== Multi-Distribution Test ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          echo "Testing on: $(cat /etc/os-release | grep PRETTY_NAME)"
-
-          # Update package lists
-          apt-get update
-
-          # Install common packages
-          apt-get install -y curl wget htop nano
-
-          # Verify installations
-          curl --version
-          wget --version
-          htop --version
-          nano --version
-
-          echo "Multi-distribution test passed for $(cat /etc/os-release | grep PRETTY_NAME)"
-          EOF
-
-          # Load and stress test
-          cat > tests/load_test.sh << 'EOF'
-          #!/bin/bash
-          set -e
-          set -x
-
-          echo "=== Load and Stress Test ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          # Stress test with multiple package installations
-          packages=(
-            "build-essential"
-            "git"
-            "python3"
-            "nodejs"
-            "nginx"
-            "postgresql-client"
-            "redis-tools"
-            "jq"
-            "tree"
-            "vim"
-          )
-
-          for package in "${packages[@]}"; do
-            echo "Installing $package..."
-            apt-get install -y "$package"
-            echo "Successfully installed $package"
-          done
-
-          echo "Load test completed successfully"
-          EOF
-
-          # Long-running reliability test
-          cat > tests/reliability_test.sh << 'EOF'
-          #!/bin/bash
-          set -e
-          set -x
-
-          echo "=== Reliability Test ==="
-
-          # Configure apt to use the proxy
-          echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
-          echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy
-
-          # Test cache persistence and performance over time
-          for i in {1..5}; do
-            echo "Reliability test iteration $i/5"
-
-            # Install packages
-            apt-get install -y "package-$i" 2>/dev/null || apt-get install -y curl
-
-            # Check proxy health
-            if ! curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > /dev/null; then
-              echo "ERROR: Proxy health check failed in iteration $i"
-              exit 1
-            fi
-
-            # Wait between iterations
-            sleep 10
-          done
-
-          echo "Reliability test passed"
-          EOF
-
-          chmod +x tests/*.sh
-
       - name: Start comprehensive test environment
         run: |
           echo "Starting comprehensive test environment..."
+          export TEST_IMAGE=ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
           docker compose -f docker-compose.cron-test.yml up -d
 
           echo "Waiting for services to be healthy..."
@@ -497,14 +221,13 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.cron-test.yml down -v
-          rm -f docker-compose.cron-test.yml
-          rm -rf tests
           rm -f proxy-stats.html apt-cacher-ng-cron-logs.txt
 
   scan-image:
       name: Scan Image with Trivy
       needs: [build-test-image]
       runs-on: ubuntu-latest
+      timeout-minutes: 15
 
       permissions:
         contents: read
@@ -530,7 +253,7 @@ jobs:
           uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # master
           with:
             image-ref: ghcr.io/oct8l/apt-cacher-ng:${{ github.run_id }}
-            exit-code: 0
+            exit-code: 1
             ignore-unfixed: true
             vuln-type: 'os,library'
             severity: 'HIGH,CRITICAL'
@@ -538,6 +261,7 @@ jobs:
             output: 'results.sarif'
 
         - name: Upload Trivy scan results to GitHub Security tab
+          if: always()
           uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
           with:
             sarif_file: results.sarif
@@ -568,6 +292,7 @@ jobs:
     name: Build and Push Docker Image
     needs: [test-integration, scan-image]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Skip this job for scheduled builds (use the comprehensive one instead)
     if: github.event_name != 'schedule'
 
@@ -617,6 +342,7 @@ jobs:
     name: Build and Push Docker Image (Scheduled)
     needs: [test-integration, scan-image, test-cron-comprehensive]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Only run this job for scheduled builds (after comprehensive testing)
     if: github.event_name == 'schedule'
 
@@ -672,6 +398,7 @@ jobs:
     name: Notify Scheduled Build Failure
     needs: [test-integration, scan-image, test-cron-comprehensive, build-and-push-docker-image-scheduled]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: always() && github.event_name == 'schedule' && (needs.test-integration.result == 'failure' || needs.scan-image.result == 'failure' || needs.test-cron-comprehensive.result == 'failure' || needs.build-and-push-docker-image-scheduled.result == 'failure')
 
     steps:

@@ -6,76 +6,45 @@
 set -e
 
 echo "🔧 Building apt-cacher-ng Docker image..."
-docker build -t local-apt-cacher-ng:test .
+export TEST_IMAGE="local-apt-cacher-ng:test"
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')
+export TEST_PLATFORM="linux/${ARCH}"
 
-echo "🚀 Starting apt-cacher-ng service..."
-docker run -d --name apt-cacher-local-test -p 3142:3142 local-apt-cacher-ng:test
+docker build -t "$TEST_IMAGE" .
+
+echo "🚀 Starting apt-cacher-ng service via Docker Compose..."
+docker compose -f docker-compose.test.yml up -d
 
 echo "⏳ Waiting for service to be ready..."
-timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do echo "Waiting..."; sleep 3; done'
+for _ in {1..20}; do
+  if docker compose -f docker-compose.test.yml exec -T apt-cacher-ng wget -q -t1 -O /dev/null http://localhost:3142/acng-report.html; then
+    break
+  fi
+  echo "Waiting..."
+  sleep 3
+done
 
 echo "✅ Service is ready! Running tests..."
 
 echo ""
-echo "🧪 Test 1: Basic functionality test"
-docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm-slim bash -c "
-  echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
-  echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
-
-  echo 'Running apt update through proxy...'
-  apt-get update
-
-  echo 'Installing curl...'
-  apt-get install -y curl
-
-  echo 'Verifying curl installation...'
-  curl --version
-
-  echo 'Test 1 passed!'
-"
+echo "🧪 Running tests/run_tests.sh..."
+docker compose -f docker-compose.test.yml exec -T test-client /tests/run_tests.sh
 
 echo ""
-echo "🧪 Test 2: Cache performance test"
-docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm-slim bash -c "
-  echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
-  echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
-
-  echo 'First install (cache miss):'
-  time (apt-get update && apt-get install -y cowsay)
-
-  echo 'Removing package...'
-  apt-get remove -y cowsay
-  apt-get clean
-
-  echo 'Second install (cache hit - should be faster):'
-  time (apt-get update && apt-get install -y cowsay)
-
-  echo 'Test 2 passed!'
-"
+echo "🧪 Running tests/performance_test.sh..."
+docker compose -f docker-compose.test.yml exec -T test-client /tests/performance_test.sh
 
 echo ""
-echo "🧪 Test 3: Health check verification"
-if curl -f -s http://localhost:3142/acng-report.html | grep -q "Apt-Cacher NG"; then
-  echo "✅ Health check passed - apt-cacher-ng is responding correctly"
-else
-  echo "❌ Health check failed - apt-cacher-ng is not responding correctly"
-  exit 1
-fi
-
-echo ""
-echo "🧪 Test 4: Statistics check"
-echo "📊 Current cache statistics:"
-curl -f -s http://localhost:3142/acng-report.html | grep -A 10 -B 5 "Statistics" || echo "No statistics found yet"
+echo "🧪 Running tests/error_test.sh..."
+docker compose -f docker-compose.test.yml exec -T test-client /tests/error_test.sh
 
 echo ""
 echo "🧹 Cleaning up..."
-docker stop apt-cacher-local-test
-docker rm apt-cacher-local-test
+docker compose -f docker-compose.test.yml down -v
 
 echo ""
-echo "🎉 All tests passed! Your apt-cacher-ng setup is working correctly."
+echo "🎉 All local tests passed! Your apt-cacher-ng setup is working correctly."
 echo ""
 echo "📋 Next steps:"
 echo "  - Your changes are ready for PR submission"
-echo "  - The GitHub Actions will run comprehensive tests when you open a PR"
-echo "  - Consider testing with different client distributions if you made major changes"
+echo "  - The GitHub Actions will run these same tests, plus comprehensive multi-distro tests"
