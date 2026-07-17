@@ -21,6 +21,7 @@ jobs:
           - "debian:bookworm-slim"
           - "debian:bookworm"
           - "debian:bullseye-slim"
+          - "debian:bullseye"
         apt_cacher_version:
           - "" # Use default version available in the repository
           # Additional versions can be added when we know they exist in specific repos
@@ -199,7 +200,7 @@ jobs:
           docker compose -f docker-compose.upstream-test.yml down
 
   test-different-debian-clients:
-    name: Test compatibility with different Debian client versions (${{ matrix.client_image }})
+    name: Test compatibility with different client distributions (${{ matrix.client_image }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [test-upstream-variations]
@@ -207,9 +208,13 @@ jobs:
       fail-fast: false
       matrix:
         client_image:
+          - "debian:trixie-slim"
           - "debian:trixie"
+          - "debian:bookworm-slim"
           - "debian:bookworm"
+          - "debian:bullseye-slim"
           - "debian:bullseye"
+          - "ubuntu:26.04"
           - "ubuntu:24.04"
           - "ubuntu:22.04"
 

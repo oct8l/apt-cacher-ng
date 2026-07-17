@@ -188,34 +188,38 @@ jobs:
 
       - name: Run multi-distribution tests
         run: |
-          echo "Testing Debian Trixie..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-trixie /tests/multi_distro_test.sh
-
-          echo "Testing Debian Bookworm..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/multi_distro_test.sh
-
-          echo "Testing Debian Bullseye..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bullseye /tests/multi_distro_test.sh
-
-          echo "Testing Ubuntu Jammy..."
-          docker compose -f docker-compose.cron-test.yml exec -T ubuntu-jammy /tests/multi_distro_test.sh
+          clients=(
+            debian-trixie-slim
+            debian-trixie
+            debian-bookworm-slim
+            debian-bookworm
+            debian-bullseye-slim
+            debian-bullseye
+            ubuntu-26-04
+            ubuntu-24-04
+            ubuntu-22-04
+          )
+          for client in "${clients[@]}"; do
+            echo "Testing ${client}..."
+            docker compose -f docker-compose.cron-test.yml exec -T "${client}" /tests/multi_distro_test.sh
+          done
 
       - name: Run load and stress tests
         run: |
           echo "Running load test on Debian Bookworm..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/load_test.sh
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim /tests/load_test.sh
 
       - name: Run reliability tests
         run: |
           echo "Running reliability test..."
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm /tests/reliability_test.sh
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim /tests/reliability_test.sh
 
       - name: Validate proxy statistics and health
         run: |
           echo "=== Final Proxy Validation ==="
 
           # Get detailed statistics
-          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > proxy-stats.html
+          docker compose -f docker-compose.cron-test.yml exec -T debian-bookworm-slim curl -f -s "http://apt-cacher-ng:3142/acng-report.html" > proxy-stats.html
 
           # Check for expected content in statistics
           if ! grep -q -i "apt-cacher" proxy-stats.html; then
