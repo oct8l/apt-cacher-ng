@@ -133,27 +133,55 @@ jobs:
           # Sanitize matrix values for Docker tag (replace : and / with -)
           BASE_TAG=$(echo "${{ matrix.base_image }}" | sed 's/[:/]/-/g')
           VERSION_TAG=$(echo "$VERSION_DISPLAY" | sed 's/[:/]/-/g')
+
+          cleanup() {
+            docker stop test-cacher >/dev/null 2>&1 || true
+            docker rm test-cacher >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
           # Start the service
           docker run -d --name test-cacher -p 3142:3142 test-apt-cacher:${BASE_TAG}-${VERSION_TAG}
 
           # Wait for service to be ready
           timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
 
-          # Test that we can use it as a proxy
-          docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm-slim bash -c "
-            echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
-            echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
-            apt-get update
-            apt-get install -y curl
-            curl --version
-          "
+          # Retry apt through the proxy on transient upstream/proxy 5xx (e.g. 502)
+          max_attempts=3
+          attempt=1
+          while true; do
+            echo "Proxy client test attempt ${attempt}/${max_attempts}..."
+            set +e
+            output=$(docker run --rm --add-host=apt-cacher:host-gateway debian:bookworm-slim bash -c '
+              echo "Acquire::HTTP::Proxy \"http://apt-cacher:3142\";" > /etc/apt/apt.conf.d/01proxy
+              echo "Acquire::HTTPS::Proxy \"false\";" >> /etc/apt/apt.conf.d/01proxy
+              echo "Acquire::Retries \"3\";" >> /etc/apt/apt.conf.d/01proxy
+              apt-get update
+              apt-get install -y curl
+              curl --version
+            ' 2>&1)
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+
+            if [[ $status -eq 0 ]]; then
+              break
+            fi
+
+            if [[ $attempt -lt $max_attempts ]] && grep -qE '[[:space:]]5[0-9]{2}[[:space:]]' <<<"$output"; then
+              sleep_for=$((attempt * 5))
+              echo "Transient HTTP 5xx from upstream/proxy; retrying in ${sleep_for}s..."
+              sleep "$sleep_for"
+              attempt=$((attempt + 1))
+              continue
+            fi
+
+            echo "Proxy client test failed (exit ${status})"
+            exit "$status"
+          done
 
           # Verify health
           curl -f http://localhost:3142/acng-report.html
-
-          # Cleanup
-          docker stop test-cacher
-          docker rm test-cacher
 
       - name: Test with docker-compose
         run: |
