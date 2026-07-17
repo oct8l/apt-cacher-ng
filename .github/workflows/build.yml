@@ -13,6 +13,12 @@ on:
   schedule:
     - cron: '30 5 1,15 * *'
 
+env:
+  FINAL_IMAGE_CACHE_FROM: |
+    type=gha
+    type=gha,scope=test-image-amd64
+    type=gha,scope=test-image-arm64
+
 jobs:
 
   build-test-image:
@@ -348,10 +354,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha
-            type=gha,scope=test-image-amd64
-            type=gha,scope=test-image-arm64
+          cache-from: ${{ env.FINAL_IMAGE_CACHE_FROM }}
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
@@ -404,10 +407,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha
-            type=gha,scope=test-image-amd64
-            type=gha,scope=test-image-arm64
+          cache-from: ${{ env.FINAL_IMAGE_CACHE_FROM }}
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64/v8,linux/arm/v7
 
