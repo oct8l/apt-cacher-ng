@@ -1,4 +1,4 @@
-FROM debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 
 # Package pins use a trailing * at install time so Debian binNMU suffixes
 # (e.g. 3.7.5-1 on amd64 vs 3.7.5-1+b1 on arm64) still match. Renovate only
