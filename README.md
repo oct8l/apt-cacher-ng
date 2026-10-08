@@ -201,6 +201,13 @@ requests targeting `main`:
 The `PR CI Gate` job aggregates these checks into a single status that branch
 protection can require.
 
+Bullseye is retained for historical compatibility. Its test images and clients
+use `archive.debian.org` for the `bullseye`, `bullseye-updates`, and
+`bullseye-security` suites, configured by
+[`configure-apt-repositories.sh`](tests/configure-apt-repositories.sh).
+APT skips expiry checks only for those archive sources and still verifies their
+signatures. The same setup applies to scheduled multi-distribution tests.
+
 ## Other CI runs
 
 - Pushes to `main`, version tags, and manual `build.yml` runs execute the

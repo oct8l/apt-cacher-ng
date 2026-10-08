@@ -4,6 +4,9 @@ set -x
 
 echo "=== Multi-Distribution Test ==="
 
+# Use archived repositories for historical Debian clients.
+sh "$(dirname "$0")/configure-apt-repositories.sh"
+
 # Configure apt to use the proxy
 echo 'Acquire::HTTP::Proxy "http://apt-cacher-ng:3142";' > /etc/apt/apt.conf.d/01proxy
 echo 'Acquire::HTTPS::Proxy "false";' >> /etc/apt/apt.conf.d/01proxy

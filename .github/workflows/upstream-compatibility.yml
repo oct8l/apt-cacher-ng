@@ -60,22 +60,26 @@ jobs:
           cat > Dockerfile.test << EOF
           FROM ${{ matrix.base_image }}
 
+          COPY tests/configure-apt-repositories.sh /tmp/configure-apt-repositories.sh
+
           ENV APT_CACHER_NG_VERSION=${{ matrix.apt_cacher_version }} \\
               APT_CACHER_NG_CACHE_DIR=/var/cache/apt-cacher-ng \\
               APT_CACHER_NG_LOG_DIR=/var/log/apt-cacher-ng \\
               APT_CACHER_NG_USER=apt-cacher-ng
 
-          RUN apt-get update \\
+          RUN sh /tmp/configure-apt-repositories.sh \\
+           && apt-get update \\
            && echo "=== Available apt-cacher-ng versions ===" \\
-           && apt-cache madison apt-cacher-ng || true \\
+           && (apt-cache madison apt-cacher-ng || true) \\
            && echo "=== Installing: ${APT_PACKAGE} ===" \\
            && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\
                 ${APT_PACKAGE} ca-certificates wget \\
            && echo "=== Installed version ===" \\
-           && apt-cacher-ng -V || dpkg -l apt-cacher-ng \\
+           && (apt-cacher-ng -V || dpkg -l apt-cacher-ng) \\
            && sed 's/# ForeGround: 0/ForeGround: 1/' -i /etc/apt-cacher-ng/acng.conf \\
            && sed 's/# PassThroughPattern:.*this would allow.*/PassThroughPattern: .* #/' -i /etc/apt-cacher-ng/acng.conf \\
-           && rm -rf /var/lib/apt/lists/*
+           && rm -rf /var/lib/apt/lists/* \\
+           && rm /tmp/configure-apt-repositories.sh
 
           COPY entrypoint.sh /sbin/entrypoint.sh
 
@@ -263,7 +267,9 @@ jobs:
           timeout 60s bash -c 'while ! curl -f -s http://localhost:3142/acng-report.html > /dev/null; do sleep 2; done'
 
           # Test with the client image
-          docker run --rm --add-host=apt-cacher:host-gateway ${{ matrix.client_image }} bash -c "
+          docker run --rm --add-host=apt-cacher:host-gateway \
+            -v "$PWD/tests:/tests:ro" ${{ matrix.client_image }} bash -ec "
+            sh /tests/configure-apt-repositories.sh
             echo 'Acquire::HTTP::Proxy \"http://apt-cacher:3142\";' > /etc/apt/apt.conf.d/01proxy
             echo 'Acquire::HTTPS::Proxy \"false\";' >> /etc/apt/apt.conf.d/01proxy
 
