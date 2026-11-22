@@ -6,7 +6,7 @@ FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f0
 # renovate: suite=trixie depName=apt-cacher-ng
 ENV APT_CACHER_NG_VERSION="3.7.5-1"
 # renovate: suite=trixie depName=ca-certificates
-ENV CA_CERTIFICATES_VERSION="20250419"
+ENV CA_CERTIFICATES_VERSION="20250419+deb13u1"
 # renovate: suite=trixie depName=wget
 ENV WGET_VERSION="1.25.0-2"
 
